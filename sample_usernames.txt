@@ -1,0 +1,8 @@
+# Sample usernames file for bulk messaging
+# Add one username per line (with or without @)
+# Lines starting with # are ignored
+
+# Example usernames (replace with actual usernames):
+# username1
+# @username2
+# username3
