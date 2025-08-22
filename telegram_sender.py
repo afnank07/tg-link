@@ -3,7 +3,7 @@ import sys
 import argparse
 import logging
 from typing import List, Optional
-from telethon import TelegramClient, errors
+from telethon import TelegramClient, errors, events
 from telethon.tl.types import User
 from config import TelegramConfig
 
@@ -148,35 +148,62 @@ class TelegramSender:
         """Interactive mode for sending messages."""
         print("\n=== Telegram Message Sender - Interactive Mode ===")
         print("Type 'quit' or 'exit' to stop")
-        
-        while True:
-            try:
-                username = input("\nEnter username (with or without @): ").strip()
-                if username.lower() in ['quit', 'exit']:
-                    break
-                
+
+        try:
+            username = None
+            while True:
                 if not username:
-                    print("Please enter a valid username")
-                    continue
-                
-                message = input("Enter message: ").strip()
-                if not message:
-                    print("Please enter a message")
-                    continue
-                
-                print(f"Sending message to @{username.lstrip('@')}...")
-                success = await self.send_message(username, message)
-                
-                if success:
-                    print("✅ Message sent successfully!")
-                else:
-                    print("❌ Failed to send message")
-                
-            except KeyboardInterrupt:
-                print("\nExiting...")
-                break
-            except Exception as e:
-                print(f"Error: {e}")
+                    username = input("\nEnter username (with or without @): ").strip()
+                    if username.lower() in ['quit', 'exit']:
+                        break
+                    if not username:
+                        print("Please enter a valid username")
+                        continue
+
+                print(f"\nChatting with @{username.lstrip('@')}. Type 'change' to switch user, 'quit' to exit.")
+                while True:
+                    message = input("You: ").strip()
+                    if message.lower() in ['quit', 'exit']:
+                        return
+                    if message.lower() == 'change':
+                        username = None
+                        break
+                    if not message:
+                        print("Please enter a message")
+                        continue
+
+                    print(f"Sending message to @{username.lstrip('@')}...")
+                    success = await self.send_message(username, message)
+                    if success:
+                        print("✅ Message sent successfully!")
+                    else:
+                        print("❌ Failed to send message")
+                        continue
+
+                    # Wait for reply from the user
+                    print(f"Waiting for a reply from @{username.lstrip('@')}...")
+                    event_future = asyncio.get_event_loop().create_future()
+
+                    @self.client.on(events.NewMessage(from_users=username.lstrip('@'), incoming=True))
+                    async def reply_handler(event):
+                        if not event.is_private:
+                            return
+                        if not event_future.done():
+                            event_future.set_result(event)
+
+                    try:
+                        event = await asyncio.wait_for(event_future, timeout=300)  # 5 min timeout
+                        sender = await event.get_sender()
+                        sender_name = sender.username or sender.first_name or 'Unknown'
+                        print(f"\n📩 Reply from @{sender_name}: {event.text}")
+                    except asyncio.TimeoutError:
+                        print("No reply received within 5 minutes.")
+                    finally:
+                        self.client.remove_event_handler(reply_handler)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+        except Exception as e:
+            print(f"Error: {e}")
 
 async def main():
     """Main function to handle command line arguments and run the appropriate mode."""
